@@ -18,7 +18,7 @@ int main()
   srand(time(0));
   gettimeofday(&start, NULL);
 
-  totalDartsInCircle = calcPI(TOTAL_DARTS);
+  totalDartsInCircle = countDartsInCircle(TOTAL_DARTS);
 
   /* Compute average for this iteration and all iterations */
   pi = 4 * (double)totalDartsInCircle / TOTAL_DARTS;
