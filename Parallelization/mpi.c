@@ -1,7 +1,8 @@
 #include <mpi.h>
 #include <stdio.h>
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
     // Initialize the MPI environment
     MPI_Init(NULL, NULL);
 
@@ -24,4 +25,25 @@ int main(int argc, char** argv) {
 
     // Finalize the MPI environment.
     MPI_Finalize();
+}
+
+double calcPI(int darts)
+{
+    double x_coord, y_coord, pi, r, dist;
+    int score, n;
+
+    for (n = 1; n <= darts; n++)
+    {
+        r = (double)rand() / RAND_MAX;
+        x_coord = pow(r, 2);
+        r = (double)rand() / RAND_MAX;
+        y_coord = pow(r, 2);
+        dist = sqrt(x_coord + y_coord);
+        if (dist <= 1.0)
+        {
+            score++;
+        }
+    }
+    pi = 4 * (double)score / darts;
+    return pi;
 }
