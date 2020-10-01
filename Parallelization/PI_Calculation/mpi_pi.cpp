@@ -21,8 +21,8 @@
 void srandom(unsigned seed);
 int dboard(int darts);
 struct timeval stop, start;
-#define TOTAL_DARTS 10000000 /* number of throws at dartboard */
-#define MASTER 0             /* task ID of master task */
+#define TOTAL_DARTS 100000000 /* number of throws at dartboard */
+#define MASTER 0              /* task ID of master task */
 
 int main(int argc, char *argv[])
 {

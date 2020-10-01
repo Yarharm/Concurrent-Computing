@@ -6,9 +6,14 @@
 struct timeval stop, start;
 int main(int argc, char *argv[])
 {
+    if (argc < 2)
+    {
+        printf("error: missing command line arguments\n");
+        return 1;
+    }
     int n;
-    int totalDarts = 10000000;
-    int n_spawns = 4;
+    int totalDarts = 100000000;
+    int n_spawns = atoi(argv[1]);
     MPI_Comm children;
 
     gettimeofday(&start, NULL);
@@ -19,8 +24,8 @@ int main(int argc, char *argv[])
     int parallelWorkload = totalDarts / n_spawns;
     MPI_Bcast(&parallelWorkload, 1, MPI_INT, MPI_ROOT, children);
 
-    int sendbuf;
-    int recvbuf[n_spawns]; // redundant for master.
+    int sendbuf; // redundant for master.
+    int recvbuf[n_spawns];
     MPI_Gather(&sendbuf, 1, MPI_INT, recvbuf, 1, MPI_INT, MPI_ROOT, children);
 
     int totalDartsInCircle = 0;
