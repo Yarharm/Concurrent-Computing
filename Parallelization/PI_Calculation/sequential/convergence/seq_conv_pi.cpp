@@ -1,17 +1,16 @@
-// Sequential PI
-
 #include <iostream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <math.h>
 
 double calcPI(int darts);
 struct timeval stop, start;
 int main(int argc, char **argv)
 {
     double realPI = 3.1415926535897;
-    double precision = 0.0001; // Precision up to 2 decimals
-    int workload = 100000;
+    double precision = 0.0001; // Precision up to 3 decimals
+    int workload = 1000;
     gettimeofday(&start, NULL);
 
     double pi = 0;
@@ -41,24 +40,40 @@ int main(int argc, char **argv)
 
 double calcPI(int darts)
 {
-    double x_coord, y_coord, pi, r, dist;
+#define sqr(x) ((x) * (x))
+    long random(void);
+    double x_coord, y_coord, pi, r;
     int score, n;
+    unsigned int cconst; /* must be 4-bytes in size */
+    /*************************************************************************
+ * The cconst variable must be 4 bytes. We check this and bail if it is
+ * not the right size
+ ************************************************************************/
+    if (sizeof(cconst) != 4)
+    {
+        printf("Wrong data size for cconst variable in dboard routine!\n");
+        printf("See comments in source file. Quitting.\n");
+        exit(1);
+    }
+    /* 2 bit shifted to MAX_RAND later used to scale random number between 0 and 1 */
+    cconst = 2 << (31 - 1);
+    score = 0;
 
-    for (int n = 1; n <= darts; n++)
+    /* "throw darts at board" */
+    for (n = 1; n <= darts; n++)
     {
         /* generate random numbers for x and y coordinates */
-        r = (double)rand() / RAND_MAX;
-        x_coord = pow(r, 2);
-        r = (double)rand() / RAND_MAX;
-        y_coord = pow(r, 2);
+        r = (double)random() / cconst;
+        x_coord = (2.0 * r) - 1.0;
+        r = (double)random() / cconst;
+        y_coord = (2.0 * r) - 1.0;
 
-        dist = sqrt(x_coord + y_coord);
         /* if dart lands in circle, increment score */
-        if (dist <= 1.0)
-        {
+        if ((sqr(x_coord) + sqr(y_coord)) <= 1.0)
             score++;
-        }
     }
-    pi = 4 * (double)score / darts;
-    return pi;
+
+    /* calculate pi */
+    pi = 4.0 * (double)score / (double)darts;
+    return (pi);
 }

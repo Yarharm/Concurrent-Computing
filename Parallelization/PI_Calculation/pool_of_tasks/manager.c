@@ -10,11 +10,16 @@ using namespace std;
 struct timeval stop, start;
 int main(int argc, char *argv[])
 {
+    if (argc < 2)
+    {
+        printf("error: missing command line arguments\n");
+        return 1;
+    }
     int n;
     double realPI = 3.1415926535897;
-    double precision = 0.001; // Precision up to 2 decimals
+    double precision = 0.0001; // Precision up to 3 decimals
     int initWorkload = 1000;
-    int n_spawns = 4;
+    int n_spawns = atoi(argv[1]);
 
     MPI_Request requests[n_spawns];
     int workloads[n_spawns];
@@ -46,9 +51,8 @@ int main(int argc, char *argv[])
                 converged = 1;
                 pi = freshPi[idx];
             }
-            freshDiff[idx] = fabs(freshPi[idx] - oldPi[idx]);
-            printf("Worker ID=%d generated PI=%10.8f\n", idx, freshPi[idx]);
 
+            freshDiff[idx] = fabs(freshPi[idx] - oldPi[idx]);
             if (isgreaterequal(freshDiff[idx], oldDiff[idx]))
             {
                 workloads[idx] = workloads[idx] * 10;
@@ -67,8 +71,10 @@ int main(int argc, char *argv[])
             MPI_Comm_spawn("./worker.o", spawn_args, 1, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &child, MPI_ERRCODES_IGNORE);
             MPI_Irecv(&freshPi[idx], 1, MPI_DOUBLE, 0, 0, child, &requests[idx]);
         }
-
-        MPI_Waitsome(n_spawns, requests, &available_processes, indexes, MPI_STATUSES_IGNORE);
+        if (!converged)
+        {
+            MPI_Waitsome(n_spawns, requests, &available_processes, indexes, MPI_STATUSES_IGNORE);
+        }
     }
 
     printf("\nCalculated value of PI: %10.8f\n", pi);
