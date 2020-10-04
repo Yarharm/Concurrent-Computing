@@ -12,13 +12,12 @@
 int FPS = 30;
 int window_width = 600;
 int window_height = 600;
-int game_width = 600;
-int game_height = 600;
-
+int game_width = 120;
+int game_height = 120;
 CellGrowth *cellSimulation;
 
 void display() {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 	glLoadIdentity();
 
 	// dynamically calculate texture size
@@ -26,8 +25,8 @@ void display() {
 	double ySize = 1.0 / game_height;
 
 	glBegin(GL_QUADS);
-	for (GLint x = 0; x < game_width; ++x) {
-		for (GLint y = 0; y < game_height; ++y) {
+	for (int x = 0; x < game_width; ++x) {
+		for (int y = 0; y < game_height; ++y) {
 			int cellState = cellSimulation->getCell(x, y);
 			if (cellState > 0) {
 				cellState == 1 ? glColor3f(RED) : glColor3f(GREEN);
@@ -48,22 +47,6 @@ void display() {
 	glutSwapBuffers();
 }
 
-void reshape(int w, int h) {
-	window_width = w;
-	window_height = h;
-
-	glViewport(0, 0, window_width, window_height);
-
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluOrtho2D(0.0, 1.0, 0.0, 1.0); // OpenGL (0, 0) is in the middle map the bottom left
-
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-
-	glutPostRedisplay();
-}
-
 void onClick(int button, int state, int x, int y)
 {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_UP) {
@@ -72,11 +55,13 @@ void onClick(int button, int state, int x, int y)
 }
 
 void update(int value) {
-
-	// cellSimulation->iterate();
-
+	auto begin = std::chrono::high_resolution_clock::now();
+	cellSimulation->execute();
+	auto end = std::chrono::high_resolution_clock::now();
+	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+	std::cout << ms << std::endl;
 	glutPostRedisplay();
-	glutTimerFunc(1000 / FPS, update, 0);
+	glutTimerFunc(400, update, 0);
 }
 
 int main(int argc, char **argv) {
@@ -84,12 +69,11 @@ int main(int argc, char **argv) {
 
 	glutInitWindowSize(window_width, window_height);
 	glutInitWindowPosition(0, 0);
-	glutCreateWindow("Game of Life");
-	glClearColor(1, 1, 1, 1);
-
-	glutReshapeFunc(reshape);
+	glutCreateWindow("COMP Cells");
+	glMatrixMode(GL_PROJECTION);
+	gluOrtho2D(0.0, 1.0, 0.0, 1.0);
+	glMatrixMode(GL_MODELVIEW);
 	glutDisplayFunc(display);
-
 	glutMouseFunc(onClick);
 
 	cellSimulation = new CellGrowth(game_width, game_height);
