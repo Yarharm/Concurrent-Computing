@@ -4,6 +4,7 @@
 #include "CellGrowth.h"
 
 #include <iostream>
+#include <sstream>
 
 #define RED 1.0, 0.0, 0.0
 #define GREEN 0.0, 1.0, 0.0
@@ -16,14 +17,19 @@ int game_width = 120;
 int game_height = 120;
 CellGrowth *cellSimulation;
 
+void drawBitmapText(const char *string, float x, float y, float z)
+{
+	const char *c;
+	glRasterPos3f(x, y, z);//define position on the screen where to draw text.
+
+	for (c = string; *c != '\0'; c++)
+	{
+		glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
+	}
+}
+
 void display() {
 	glClear(GL_COLOR_BUFFER_BIT);
-	glLoadIdentity();
-
-	// dynamically calculate texture size
-	double xSize = 1.0 / game_width;
-	double ySize = 1.0 / game_height;
-
 	glBegin(GL_QUADS);
 	for (int x = 0; x < game_width; ++x) {
 		for (int y = 0; y < game_height; ++y) {
@@ -34,16 +40,31 @@ void display() {
 			else {
 				glColor3f(YELLOW);
 			}
-			// Point must be projected on [0.0 ... 1.0] range
-			glVertex2f(x*xSize, y*ySize);
-			glVertex2f((x + 1)*xSize, y*ySize);
-			glVertex2f((x + 1)*xSize, (y + 1)*ySize);
-			glVertex2f(x*xSize, (y + 1)*ySize);
+			
+			glVertex2f(x, y);
+			glVertex2f(x + 1, y);
+			glVertex2f(x + 1, y + 1);
+			glVertex2f(x, y + 1);
+			
 		}
 	}
-	glEnd();
 
+	glEnd();
 	glFlush();
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();//Resets to identity Matrix.
+	gluOrtho2D(0, game_width, game_height, 0);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glColor3f(0, 0, 1);
+
+	std::string cancer = "Cancer count: " + std::to_string(cellSimulation->currentCancerCount);
+	std::string healthy = "Healthy count: " + std::to_string(cellSimulation->currentHealthyCount);
+	std::string medicine = "Medicine count: " + std::to_string(cellSimulation->currentMedicineCount);
+	drawBitmapText(cancer.c_str(), 0, game_height * 0.1, 0);
+	drawBitmapText(healthy.c_str(), 0, game_height * 0.15, 0);
+	drawBitmapText(medicine.c_str(), 0, game_height * 0.20, 0);
 	glutSwapBuffers();
 }
 
@@ -66,13 +87,12 @@ void update(int value) {
 
 int main(int argc, char **argv) {
 	glutInit(&argc, argv);
-
+	glutInitDisplayMode(GLUT_RGB);
 	glutInitWindowSize(window_width, window_height);
-	glutInitWindowPosition(0, 0);
 	glutCreateWindow("COMP Cells");
 	glMatrixMode(GL_PROJECTION);
-	gluOrtho2D(0.0, 1.0, 0.0, 1.0);
-	glMatrixMode(GL_MODELVIEW);
+	gluOrtho2D(0.0, game_width, 0.0, game_height);
+
 	glutDisplayFunc(display);
 	glutMouseFunc(onClick);
 
