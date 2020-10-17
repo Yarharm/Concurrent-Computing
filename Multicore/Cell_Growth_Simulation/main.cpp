@@ -10,11 +10,11 @@
 #define GREEN 0.0, 1.0, 0.0
 #define YELLOW 1.0, 1.0, 0.0
 
-int FPS = 30;
 int window_width = 600;
 int window_height = 600;
 int game_width = 120;
 int game_height = 120;
+int update_time = 700;
 CellGrowth *cellSimulation;
 
 void drawBitmapText(const char *string, float x, float y, float z)
@@ -53,7 +53,7 @@ void display() {
 	glFlush();
 
 	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();//Resets to identity Matrix.
+	glLoadIdentity();
 	gluOrtho2D(0, game_width, game_height, 0);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -80,7 +80,7 @@ void update(int value) {
 	cellSimulation->execute();
 	auto end = std::chrono::high_resolution_clock::now();
 	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
-	std::cout << ms << std::endl;
+	/*std::cout << ms << std::endl;*/
 	glutPostRedisplay();
 	glutTimerFunc(400, update, 0);
 }
