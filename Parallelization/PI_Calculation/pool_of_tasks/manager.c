@@ -76,16 +76,16 @@ int main(int argc, char *argv[])
             MPI_Waitsome(n_spawns, requests, &available_processes, indexes, MPI_STATUSES_IGNORE);
         }
     }
-
     printf("\nCalculated value of PI: %10.8f\n", pi);
     printf("Real value of PI: 3.1415926535897\n");
 
     gettimeofday(&stop, NULL);
+
     long seconds = stop.tv_sec - start.tv_sec;
     long micro_seconds = stop.tv_usec - start.tv_usec;
     long total_micro_seconds = (seconds * 1000000) + abs(micro_seconds);
     printf("\nTotal Execution time is: %10.8f miliseconds\n", (double)total_micro_seconds / 1000);
-
-    MPI_Abort(MPI_COMM_WORLD, MPI_SUCCESS);
+    MPI_Waitall(n_spawns, requests, MPI_STATUSES_IGNORE);
+    MPI_Finalize();
     return 0;
 }

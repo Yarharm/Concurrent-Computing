@@ -2,6 +2,9 @@
   "editor.formatOnSave": true,
   "files.associations": {
     "chrono": "cpp",
-    "sstream": "c"
+    "sstream": "c",
+    "ostream": "cpp",
+    "iosfwd": "cpp",
+    "vector": "cpp"
   }
 }

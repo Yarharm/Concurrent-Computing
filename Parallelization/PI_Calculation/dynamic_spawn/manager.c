@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     int n;
-    int totalDarts = 100000000;
+    int totalDarts = 10000000;
     int n_spawns = atoi(argv[1]);
     MPI_Comm children;
 
