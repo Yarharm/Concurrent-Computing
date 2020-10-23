@@ -46,6 +46,7 @@ int main(int argc, char *argv[])
     int processReminder = inputSize % worldSize;
     vector<int> sequence;
 
+    /* Distribute chunks */
     if (rank == 0)
     {
         cout << "Execute parallel quick sort with " << worldSize << " processes and dimension " << dimension << "\n"
@@ -79,13 +80,29 @@ int main(int argc, char *argv[])
         vector<int> lowerValsContainer;
         vector<int> higherValsContainer;
         int pivot;
-        if (rank == 0)
+        MPI_Comm groupComm;
+        int groupSize = worldSize / ((int)pow(2, i));
+        int color = -1;
+
+        for (int process = 0; process < worldSize; process++)
+        {
+            if (process % groupSize == 0)
+            {
+                color++;
+            }
+            if (process == rank)
+            {
+                MPI_Comm_split(MPI_COMM_WORLD, color, rank, &groupComm);
+            }
+        }
+
+        if (rank % groupSize == 0)
         {
             int pivotPos = rand() % sequenceSize;
             pivot = sequence[pivotPos];
         }
-
-        MPI_Bcast(&pivot, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&pivot, 1, MPI_INT, 0, groupComm);
+        cout << "Process with rank " << rank << " works on pivot " << pivot << " during dimension " << i << endl;
 
         /* partition */
         partition(sequence, lowerValsContainer, higherValsContainer, pivot);
@@ -165,7 +182,12 @@ int main(int argc, char *argv[])
         {
             cout << "\nFailed to sort the array" << endl;
         }
-
+        /*
+        for(int i = 0; i < inputSize; i++) {
+            cout << input[i] << " ";
+        }
+        cout << endl;
+        */
         long seconds = stop.tv_sec - start.tv_sec;
         long micro_seconds = stop.tv_usec - start.tv_usec;
         long total_micro_seconds = (seconds * 1000000) + abs(micro_seconds);
