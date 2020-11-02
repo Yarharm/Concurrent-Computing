@@ -182,12 +182,13 @@ int main(int argc, char *argv[])
         {
             cout << "\nFailed to sort the array" << endl;
         }
-        /*
-        for(int i = 0; i < inputSize; i++) {
+
+        for (int i = 0; i < inputSize; i++)
+        {
             cout << input[i] << " ";
         }
         cout << endl;
-        */
+
         long seconds = stop.tv_sec - start.tv_sec;
         long micro_seconds = stop.tv_usec - start.tv_usec;
         long total_micro_seconds = (seconds * 1000000) + abs(micro_seconds);
@@ -243,7 +244,7 @@ void serialQuickSort(vector<int> &nums, int l, int r)
 
 void generateInput(vector<int> &nums, int inputSize)
 {
-    int max = 1000000;
+    int max = inputSize;
     int min = 1;
     for (int i = 0; i < inputSize; i++)
     {
