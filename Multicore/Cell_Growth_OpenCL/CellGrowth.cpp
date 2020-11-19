@@ -1,16 +1,24 @@
 #include "CellGrowth.h"
-std::vector<std::vector<int>> grid;
+int grid[GAME_SIZE];
 int medicineCells[GAME_SIZE];
 int medCellDirX[GAME_SIZE];
 int medCellDirY[GAME_SIZE];
 
-std::mutex cell_count_mtx;
-
-void Cleanup(cl_context context, cl_command_queue commandQueue, cl_program program, cl_kernel kernel, cl_mem memObjects[4]) {
+void CleanupMoveMedicineCells(cl_context context, cl_command_queue commandQueue, cl_program program, cl_kernel kernel, cl_mem memObjects[4]) {
 	clReleaseMemObject(memObjects[0]);
 	clReleaseMemObject(memObjects[1]);
 	clReleaseMemObject(memObjects[2]);
 	clReleaseMemObject(memObjects[3]);
+	clReleaseKernel(kernel);
+	clReleaseProgram(program);
+	clReleaseCommandQueue(commandQueue);
+	clReleaseContext(context);
+}
+
+void CleanupUpdateCells(cl_context context, cl_command_queue commandQueue, cl_program program, cl_kernel kernel, cl_mem memObjects[3]) {
+	clReleaseMemObject(memObjects[0]);
+	clReleaseMemObject(memObjects[1]);
+	clReleaseMemObject(memObjects[2]);
 	clReleaseKernel(kernel);
 	clReleaseProgram(program);
 	clReleaseCommandQueue(commandQueue);
@@ -153,28 +161,23 @@ void convertMedicineCell(const int row, const int col);
 void activateMedicineCell(const int row, const int col, const int dirX, const int dirY);
 
 CellGrowth::CellGrowth(const int w, const int h) : width(w), height(h) {
-	grid.resize(width, std::vector<int>(height, 0));
 	srand(time(0));
 };
 
 void CellGrowth::init() {
 	int cancerCount = width * height * 0.25;
 	std::vector<int> tmp;
-	for (int i = 0; i < width; i++) {
-		for (int j = 0; j < height; j++) {
-			int cell = cancerCount > 0 ? 1 : 2;
-			tmp.push_back(cell);
-			cancerCount -= cancerCount >= 0 ? 1 : 0;
-		}
+	for (int i = 0; i < GAME_SIZE; i++) {
+		int cell = cancerCount > 0 ? 1 : 2;
+		tmp.push_back(cell);
+		cancerCount -= cancerCount >= 0 ? 1 : 0;
 	}
 
 	std::shuffle(tmp.begin(), tmp.end(), std::default_random_engine());
 
-	for (int i = 0; i < tmp.size(); i++)
+	for (int i = 0; i < GAME_SIZE; i++)
 	{
-		int row = i / width;
-		int col = i % height;
-		grid[row][col] = tmp[i];
+		grid[i] = tmp[i];
 	}
 }
 
@@ -182,29 +185,19 @@ void CellGrowth::execute() {
 	this->currentCancerCount = 0;
 	this->currentHealthyCount = 0;
 	this->currentMedicineCount = 0;
-	std::vector<std::vector<int>> tempGrid;
-	tempGrid.resize(width, std::vector<int>(height, 0));
 
-	std::vector<std::thread> threads;
-	int workload = width / THREAD_COUNT;
-	for (int i = 0; i < THREAD_COUNT; i++) {
-		threads.push_back(std::thread(&CellGrowth::threadWork, this, i * workload, (i + 1) * workload, std::ref(tempGrid)));
-	}
-
-	for (int i = 0; i < THREAD_COUNT; i++) {
-		threads[i].join();
-	}
-
-	grid = tempGrid;
-
-	// OpenCL Move medicine cells
+	// OpenCL
 	cl_context context = 0;
 	cl_command_queue commandQueue = 0;
-	cl_program program = 0;
 	cl_device_id device = 0;
+	cl_program program = 0;
 	cl_kernel kernel = 0;
-	cl_mem memObjects[4] = { 0, 0, 0, 0 };
 	cl_int errNum;
+
+	cl_mem updateCellsMemObjects[3] = { 0, 0, 0 };
+	cl_mem moveMedCellsMemObjects[4] = { 0, 0, 0, 0 };
+	size_t globalWorkSize[1] = { GAME_SIZE };
+	size_t localWorkSize[1] = { 1 };
 
 	context = CreateContext(CL_DEVICE_TYPE_GPU);
 	if (context == NULL)
@@ -217,65 +210,147 @@ void CellGrowth::execute() {
 	commandQueue = CreateCommandQueue(context, &device);
 	if (commandQueue == NULL)
 	{
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
 		exit(1);
 	}
 
-	// Create OpenCL program from ModeMedicineCells.cl kernel source
-	program = CreateProgram(context, device, "MoveMedicineCells.cl");
+	// Create OpenCL program from UpdateCells.cl kernel source
+	program = CreateProgram(context, device, "UpdateCells.cl");
 	if (program == NULL)
 	{
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
 		exit(1);
 	}
 
-	// Create OpenCL kernel
-	kernel = clCreateKernel(program, "move_medicine_cells_kernel", NULL);
+	// Create OpenCL kernel for Update Cells
+	kernel = clCreateKernel(program, "update_cells_kernel", NULL);
 	if (kernel == NULL)
 	{
 		cerr << "Failed to create kernel" << endl;
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
 		exit(1);
 	}
 
-	if (!CreateMemObjects(context, memObjects, medicineCells, medCellDirX, medCellDirY))
+	// Create memory objects for Update Cells
+	updateCellsMemObjects[0] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * GAME_SIZE, grid, NULL);
+	updateCellsMemObjects[1] = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(int) * GAME_SIZE, medicineCells, NULL);
+	updateCellsMemObjects[2] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(int) * GAME_SIZE, NULL, NULL);
+	if (updateCellsMemObjects[0] == NULL || updateCellsMemObjects[1] == NULL || updateCellsMemObjects[2] == NULL)
 	{
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		cerr << "Error creating memory objects." << endl;
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
 		exit(1);
 	}
 
 	// Set the kernel arguments
-	errNum = clSetKernelArg(kernel, 0, sizeof(cl_mem), &memObjects[0]);
-	errNum |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &memObjects[1]);
-	errNum |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &memObjects[2]);
-	errNum |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &memObjects[3]);
-	errNum |= clSetKernelArg(kernel, 4, sizeof(cl_int), &GAME_WIDTH);
-	errNum |= clSetKernelArg(kernel, 5, sizeof(cl_int), &GAME_HEIGHT);
+	errNum = clSetKernelArg(kernel, 0, sizeof(cl_mem), &updateCellsMemObjects[0]);
+	errNum |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &updateCellsMemObjects[1]);
+	errNum |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &updateCellsMemObjects[2]);
+	errNum |= clSetKernelArg(kernel, 3, sizeof(cl_int), &GAME_WIDTH);
+	errNum |= clSetKernelArg(kernel, 4, sizeof(cl_int), &GAME_HEIGHT);
 	if (errNum != CL_SUCCESS)
 	{
 		cerr << "Error setting kernel arguments." << endl;
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
 		exit(1);
 	}
-	size_t globalWorkSize[1] = { GAME_SIZE };
-	size_t localWorkSize[1] = { 1 };
 
 	// Queue the kernel up for execution across the array
 	errNum = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
 	if (errNum != CL_SUCCESS)
 	{
 		cerr << "Error queuing kernel for execution." << endl;
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
+		exit(1);
+	}
+
+	int updatedGridCells[GAME_SIZE];
+	// Read the output buffer back to the Host
+	errNum = clEnqueueReadBuffer(commandQueue, updateCellsMemObjects[2], CL_TRUE, 0, GAME_SIZE * sizeof(int), updatedGridCells, 0, NULL, NULL);
+	if (errNum != CL_SUCCESS)
+	{
+		cerr << "Error reading result buffer." << endl;
+		CleanupUpdateCells(context, commandQueue, program, kernel, updateCellsMemObjects);
+		exit(1);
+	}
+
+	// Convert medicine cells
+	for (int i = 0; i < GAME_SIZE; i++) {
+		int row = i / GAME_WIDTH;
+		int col = i % GAME_HEIGHT;
+		int cell = updatedGridCells[i];
+		if (cell == -1) {
+			grid[i] = 2;
+			for (auto &dir : dirs) {
+				int nextRow = row + dir[0];
+				int nextCol = col + dir[1];
+				if (nextRow >= 0 && nextRow < GAME_WIDTH && nextCol >= 0 && nextCol < GAME_HEIGHT) {
+					convertMedicineCell(nextRow, nextCol);
+				}
+			}
+		}
+		else {
+			grid[i] = cell;
+		}
+	}
+	clReleaseMemObject(updateCellsMemObjects[0]);
+	clReleaseMemObject(updateCellsMemObjects[1]);
+	clReleaseMemObject(updateCellsMemObjects[2]);
+
+	// Create OpenCL program from ModeMedicineCells.cl kernel source
+	program = CreateProgram(context, device, "MoveMedicineCells.cl");
+	if (program == NULL)
+	{
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
+		exit(1);
+	}
+
+	// Create OpenCL kernel for Move Medicine Cells
+	kernel = clCreateKernel(program, "move_medicine_cells_kernel", NULL);
+	if (kernel == NULL)
+	{
+		cerr << "Failed to create kernel" << endl;
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
+		exit(1);
+	}
+
+	if (!CreateMemObjects(context, moveMedCellsMemObjects, medicineCells, medCellDirX, medCellDirY))
+	{
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
+		exit(1);
+	}
+
+	// Set the kernel arguments
+	errNum = clSetKernelArg(kernel, 0, sizeof(cl_mem), &moveMedCellsMemObjects[0]);
+	errNum |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &moveMedCellsMemObjects[1]);
+	errNum |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &moveMedCellsMemObjects[2]);
+	errNum |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &moveMedCellsMemObjects[3]);
+	errNum |= clSetKernelArg(kernel, 4, sizeof(cl_int), &GAME_WIDTH);
+	errNum |= clSetKernelArg(kernel, 5, sizeof(cl_int), &GAME_HEIGHT);
+	if (errNum != CL_SUCCESS)
+	{
+		cerr << "Error setting kernel arguments." << endl;
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
+		exit(1);
+	}
+	
+
+	// Queue the kernel up for execution across the array
+	errNum = clEnqueueNDRangeKernel(commandQueue, kernel, 1, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
+	if (errNum != CL_SUCCESS)
+	{
+		cerr << "Error queuing kernel for execution." << endl;
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
 		exit(1);
 	}
 
 	int updatedMedCells[GAME_SIZE];
 	// Read the output buffer back to the Host
-	errNum = clEnqueueReadBuffer(commandQueue, memObjects[3], CL_TRUE, 0, GAME_SIZE * sizeof(int), updatedMedCells, 0, NULL, NULL);
+	errNum = clEnqueueReadBuffer(commandQueue, moveMedCellsMemObjects[3], CL_TRUE, 0, GAME_SIZE * sizeof(int), updatedMedCells, 0, NULL, NULL);
 	if (errNum != CL_SUCCESS)
 	{
 		cerr << "Error reading result buffer." << endl;
-		Cleanup(context, commandQueue, program, kernel, memObjects);
+		CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
 		exit(1);
 	}
 	
@@ -288,78 +363,20 @@ void CellGrowth::execute() {
 				medicineCells[nxtPos] = 1;
 				medCellDirX[nxtPos] = medCellDirX[i];
 				medCellDirY[nxtPos] = medCellDirY[i];
+				this->currentMedicineCount++;
 			}
 			
 			medicineCells[i] = 0;
 			medCellDirX[i] = 0;
 			medCellDirY[i] = 0;
 		}
-	}
-	Cleanup(context, commandQueue, program, kernel, memObjects);
-}
-
-void CellGrowth::threadWork(int startWidth, int endWidth, std::vector<std::vector<int>> &tempGrid) {
-	std::list<std::pair<int, int>> healedCancerCells;
-	for (int i = startWidth; i < endWidth; i++) {
-		for (int j = 0; j < height; j++) {
-			int cell = grid[i][j];
-			int medicineCount = 0;
-			int cancerCount = 0;
-			int totalCount = 0;
-			for (auto &dir : dirs) {
-				int nextRow = i + dir[0];
-				int nextCol = j + dir[1];
-				if (nextRow >= startWidth && nextRow < endWidth && nextCol >= 0 && nextCol < height) {
-					int nextCell = grid[nextRow][nextCol];
-					totalCount++;
-					if (liveMedicineCell(nextRow, nextCol)) {
-						medicineCount++;
-					}
-					else if (nextCell == 1) {
-						cancerCount++;
-					}
-				}
-			}
-			bool isMedicineMajority = medicineCount > totalCount / 2 + 1;
-			bool isCancerMajority = cancerCount > totalCount / 2 + 1;
-			cell_count_mtx.lock();
-			if (cell == 1 && isMedicineMajority) {
-				healedCancerCells.push_back(std::make_pair(i, j));
-				tempGrid[i][j] = 2;
-				this->currentHealthyCount++;
-
-			}
-			else if (cell == 2 && isCancerMajority) {
-				tempGrid[i][j] = 1;
-				this->currentCancerCount++;
-			}
-			else {
-				tempGrid[i][j] = cell;
-				this->currentHealthyCount += cell == 2 ? 1 : 0;
-				this->currentCancerCount += cell == 1 ? 1 : 0;
-			}
-			cell_count_mtx.unlock();
+		else {
+			this->currentCancerCount += grid[i] == 1 ? 1 : 0;
+			this->currentHealthyCount += grid[i] == 2 ? 1 : 0;
 		}
+		
 	}
-	consumeMedicineCells(startWidth, endWidth, healedCancerCells);
-}
-
-void CellGrowth::consumeMedicineCells(int startWidth, int endWidth, std::list<std::pair<int, int>> &healedCancerCells) {
-	for (const auto &healedCell : healedCancerCells) {
-		int x = healedCell.first;
-		int y = healedCell.second;
-		for (auto &dir : dirs) {
-			int nextRow = x + dir[0];
-			int nextCol = y + dir[1];
-			if (nextRow >= startWidth && nextRow < endWidth && nextCol >= 0 && nextCol < height && liveMedicineCell(nextRow, nextCol)) {
-				convertMedicineCell(nextRow, nextCol);
-
-				cell_count_mtx.lock();
-				this->currentHealthyCount++;
-				cell_count_mtx.unlock();
-			}
-		}
-	}
+	CleanupMoveMedicineCells(context, commandQueue, program, kernel, moveMedCellsMemObjects);
 }
 
 void CellGrowth::injectMedicine(const int x, const int y) {
@@ -380,7 +397,7 @@ void CellGrowth::injectMedicine(const int x, const int y) {
 }
 
 int CellGrowth::getCell(const int x, const int y) {
-	return liveMedicineCell(x, y) ? -1 : grid[x][y];
+	return liveMedicineCell(x, y) ? -1 : grid[x * GAME_WIDTH + y];
 }
 
 bool liveMedicineCell(const int row, const int col) {
