@@ -87,6 +87,11 @@ int main(int argc, char *argv[])
     int processArrayElemCount = processArrayDim * processArrayDim;
     int pRow = rank / meshDim;
     int pCol = rank % meshDim;
+    int prevProcessorInColumn = (pRow - 1) * meshDim + pCol;
+    int nextProcessorInColumn = (pRow + 1) * meshDim + pCol;
+    int prevProcessorInRow = pRow * meshDim + (pCol - 1);
+    int nextProcessorInRow = pRow * meshDim + (pCol + 1);
+    ;
 
     /* partition matrix */
     int process = 0;
@@ -172,6 +177,8 @@ int main(int argc, char *argv[])
     */
 
     /* Start Floyd */
+    bool finishedProcessingRow = false;
+    bool finishedProcessingCol = false;
     for (int k = 0; k < n; k++)
     {
         vector<int> receivedRows;
@@ -180,10 +187,9 @@ int main(int argc, char *argv[])
         receivedCols.resize(processArrayDim);
 
         /* send Rows */
-        MPI_Comm rowGroup;
-        MPI_Comm_split(MPI_COMM_WORLD, pCol, rank, &rowGroup);
         if (find(processRowsInCharge.begin(), processRowsInCharge.end(), k) != processRowsInCharge.end())
         {
+            finishedProcessingRow = true;
             /* prepare Row */
             receivedRows.clear();
             int localRow = k % processArrayDim;
@@ -199,16 +205,41 @@ int main(int argc, char *argv[])
             }
             cout << endl;
             */
+            if (pRow > 0)
+            {
+                MPI_Send(&receivedRows[0], processArrayDim, MPI_INT, prevProcessorInColumn, 0, MPI_COMM_WORLD);
+            }
+            if (pRow < meshDim - 1)
+            {
+                MPI_Send(&receivedRows[0], processArrayDim, MPI_INT, nextProcessorInColumn, 0, MPI_COMM_WORLD);
+            }
         }
-        MPI_Bcast(&receivedRows[0], processArrayDim, MPI_INT, k / processArrayDim, rowGroup);
+        else
+        {
+            if (finishedProcessingRow)
+            {
+                MPI_Recv(&receivedRows[0], processArrayDim, MPI_INT, nextProcessorInColumn, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (pRow > 0)
+                {
+                    MPI_Send(&receivedRows[0], processArrayDim, MPI_INT, prevProcessorInColumn, 0, MPI_COMM_WORLD);
+                }
+            }
+            else
+            {
+                MPI_Recv(&receivedRows[0], processArrayDim, MPI_INT, prevProcessorInColumn, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (pRow < meshDim - 1)
+                {
+                    MPI_Send(&receivedRows[0], processArrayDim, MPI_INT, nextProcessorInColumn, 0, MPI_COMM_WORLD);
+                }
+            }
+        }
 
         /* send Cols */
-        MPI_Comm colGroup;
-        MPI_Comm_split(MPI_COMM_WORLD, pRow, rank, &colGroup);
         if (find(processColsInCharge.begin(), processColsInCharge.end(), k) != processColsInCharge.end())
         {
-            receivedCols.clear();
+            finishedProcessingCol = true;
             /* prepare Col */
+            receivedCols.clear();
             int localCol = k % processArrayDim;
             for (int i = 0; i < processArrayDim; i++)
             {
@@ -223,8 +254,34 @@ int main(int argc, char *argv[])
             }
             cout << endl;
             */
+            if (pCol > 0)
+            {
+                MPI_Send(&receivedCols[0], processArrayDim, MPI_INT, prevProcessorInRow, 0, MPI_COMM_WORLD);
+            }
+            if (pCol < meshDim - 1)
+            {
+                MPI_Send(&receivedCols[0], processArrayDim, MPI_INT, nextProcessorInRow, 0, MPI_COMM_WORLD);
+            }
         }
-        MPI_Bcast(&receivedCols[0], processArrayDim, MPI_INT, k / processArrayDim, colGroup);
+        else
+        {
+            if (finishedProcessingCol)
+            {
+                MPI_Recv(&receivedCols[0], processArrayDim, MPI_INT, nextProcessorInRow, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (pCol > 0)
+                {
+                    MPI_Send(&receivedCols[0], processArrayDim, MPI_INT, prevProcessorInRow, 0, MPI_COMM_WORLD);
+                }
+            }
+            else
+            {
+                MPI_Recv(&receivedCols[0], processArrayDim, MPI_INT, prevProcessorInRow, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                if (pCol < meshDim - 1)
+                {
+                    MPI_Send(&receivedCols[0], processArrayDim, MPI_INT, nextProcessorInRow, 0, MPI_COMM_WORLD);
+                }
+            }
+        }
 
         /* execute Floyd on subPortions */
         for (int i = 0; i < processArrayDim; i++)
@@ -235,7 +292,6 @@ int main(int argc, char *argv[])
                 processData[i][j] = min(processData[i][j], kRouteCost);
             }
         }
-        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     /* Gather results */
