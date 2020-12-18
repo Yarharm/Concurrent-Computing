@@ -6,4 +6,9 @@ Monorepo for programming multiprocessor and multicore systems
 
 Set of practical resources to tackle implementation of parallel programs.
 
-- PI Calculation using MPI
+- Parallelization
+  - PI Calculation
+  - Quicksort with a hypercube topology
+  - Floyd–Warshall broadcast and pipeline
+- Multicore
+  - Cell Growth simulation using OpenGL, TBB and OpenCL
